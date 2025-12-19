@@ -113,7 +113,8 @@ if __name__ == "__main__":
 
   costs = []
   sample_rollouts = []
-  files = sorted(data_path.iterdir())[:args.num_segs]
+  # files = sorted(data_path.iterdir())[:args.num_segs]
+  files = sorted([f for f in data_path.iterdir() if f.suffix == '.csv'])[:args.num_segs]
   print("Running rollouts for visualizations...")
   for d, data_file in enumerate(tqdm(files[:SAMPLE_ROLLOUTS], total=SAMPLE_ROLLOUTS)):
     test_cost, test_target_lataccel, test_current_lataccel = run_rollout(data_file, args.test_controller, args.model_path, debug=False)

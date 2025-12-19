@@ -75,7 +75,7 @@ class TinyPhysicsModel:
     e_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
     return e_x / np.sum(e_x, axis=axis, keepdims=True)
 
-  def predict(self, input_data: dict, temperature=1.) -> int:
+  def predict(self, input_data: dict, temperature=1.) -> int:   # check this function again 
     res = self.ort_session.run(None, input_data)[0]
     probs = self.softmax(res / temperature, axis=-1)
     # we only care about the last timestep (batch size is just 1)
