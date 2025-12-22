@@ -3,39 +3,35 @@ import numpy as np
 from . import BaseController
 
 class Controller(BaseController):
+    # 1. Define a class-level variable to cache the model
+    # This variable is shared by all instances of the class
+    _shared_model = None
+
     def __init__(self):
-        # Load the trained model
-        self.model = PPO.load("models/ppo_tinyphysics", device='cpu')
+        # 2. Check if the model is already loaded
+        if Controller._shared_model is None:
+            # print("Loading PPO model (first time only)...")
+            Controller._shared_model = PPO.load("models/ppo_tinyphysics", device='cpu')
+        
+        # 3. Assign the shared model to this instance
+        self.model = Controller._shared_model
         self.n_lookahead = 20 
 
     def update(self, target_lataccel, current_lataccel, state, future_plan):
-        """
-        Input:
-            target_lataccel: float (The immediate target)
-            current_lataccel: float (The current simulator state)
-            state: namedtuple (state.v_ego, state.a_ego, state.roll_lataccel)
-            future_plan: namedtuple (contains .lataccel list of future targets)
-        Output:
-            action: float (steer command)
-        """
-        
         # 1. Parse State
         v_ego = state.v_ego
         a_ego = state.a_ego
         roll_lataccel = state.roll_lataccel
 
         # 2. Parse Future Targets
-        # The simulator provides 50 steps, but our model was trained on 20.
         future_targets = future_plan.lataccel[:self.n_lookahead]
         
-        # Handle padding if for some reason we get fewer than 20 (edge case)
+        # Handle padding if fewer than 20
         if len(future_targets) < self.n_lookahead:
             padding = [0.0] * (self.n_lookahead - len(future_targets))
             future_targets = list(future_targets) + padding
 
         # 3. Construct Observation
-        # Must match the order in TinyPhysicsEnv._get_observation:
-        # [v_ego, a_ego, roll, current_lat, *future_targets]
         obs = np.array([
             v_ego, 
             a_ego, 
@@ -45,7 +41,7 @@ class Controller(BaseController):
         ], dtype=np.float32)
 
         # 4. Predict Action
-        # deterministic=True avoids random noise during testing
+        # deterministic=True avoids noise during evaluation
         action, _states = self.model.predict(obs, deterministic=True)
 
         return float(action[0])
