@@ -4,7 +4,7 @@ import torch
 import os
 import sys
 from pathlib import Path
-from train.dqn_trainer import DQNNetwork, ReplayBuffer
+from controls_challenge.train.policy import DQNNetwork, ReplayBuffer
 import random 
 import torch.optim as optim 
 import torch.nn as nn

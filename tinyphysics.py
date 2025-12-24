@@ -99,7 +99,15 @@ class TinyPhysicsSimulator:
   def __init__(self, model: TinyPhysicsModel, data_path: str, controller: BaseController, debug: bool = False) -> None:
     self.data_path = data_path
     self.sim_model = model
-    self.data = self.get_data(data_path)
+    # self.data = self.get_data(data_path)
+    # --- FIX START: Handle DataFrame input directly ---
+    if isinstance(data_path, pd.DataFrame):
+        # If we passed a DataFrame, process it directly
+        self.data = self.process_data(data_path)
+    else:
+        # If we passed a string, load from disk
+        self.data = self.get_data(data_path)
+    # --- FIX END ---
     self.controller = controller
     self.debug = debug
     self.reset()
@@ -113,19 +121,37 @@ class TinyPhysicsSimulator:
     self.target_lataccel_history = [x[1] for x in state_target_futureplans]
     self.target_future = None
     self.current_lataccel = self.current_lataccel_history[-1]
-    seed = int(md5(self.data_path.encode()).hexdigest(), 16) % 10**4
+    # seed = int(md5(self.data_path.encode()).hexdigest(), 16) % 10**4
+    # np.random.seed(seed)
+    # Fix seed generation for DataFrame input
+    if isinstance(self.data_path, str):
+        seed = int(md5(self.data_path.encode()).hexdigest(), 16) % 10**4
+    else:
+        seed = np.random.randint(0, 10000)
     np.random.seed(seed)
 
-  def get_data(self, data_path: str) -> pd.DataFrame:
-    df = pd.read_csv(data_path)
-    processed_df = pd.DataFrame({
+  # --- NEW HELPER FUNCTION ---
+  def process_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({
       'roll_lataccel': np.sin(df['roll'].values) * ACC_G,
       'v_ego': df['vEgo'].values,
       'a_ego': df['aEgo'].values,
       'target_lataccel': df['targetLateralAcceleration'].values,
-      'steer_command': -df['steerCommand'].values  # steer commands are logged with left-positive convention but this simulator uses right-positive
+      'steer_command': -df['steerCommand'].values 
     })
-    return processed_df
+  
+  def get_data(self, data_path: str) -> pd.DataFrame:
+    # df = pd.read_csv(data_path)
+    # processed_df = pd.DataFrame({
+    #   'roll_lataccel': np.sin(df['roll'].values) * ACC_G,
+    #   'v_ego': df['vEgo'].values,
+    #   'a_ego': df['aEgo'].values,
+    #   'target_lataccel': df['targetLateralAcceleration'].values,
+    #   'steer_command': -df['steerCommand'].values  # steer commands are logged with left-positive convention but this simulator uses right-positive
+    # })
+    # return processed_df
+    df = pd.read_csv(data_path)
+    return self.process_data(df) # Call the helper
 
   def sim_step(self, step_idx: int) -> None:
     pred = self.sim_model.get_current_lataccel(
@@ -218,6 +244,12 @@ def run_rollout(data_path, controller_type, model_path, debug=False):
   tinyphysicsmodel = TinyPhysicsModel(model_path, debug=debug)
   controller = importlib.import_module(f'controllers.{controller_type}').Controller()
   sim = TinyPhysicsSimulator(tinyphysicsmodel, str(data_path), controller=controller, debug=debug)
+  # first_state, first_target, first_plan = sim.get_state_target_futureplan(sim.step_idx)
+  
+  # if sim.step_idx == :
+  #   print(f"Future Plan (First Step): {first_plan}")
+  #   print(f"Current State: {first_state}")
+  #   print(f"First target {first_target}")
   return sim.rollout(), sim.target_lataccel_history, sim.current_lataccel_history
 
 
@@ -263,3 +295,5 @@ if __name__ == "__main__":
     plt.title('costs Distribution')
     plt.legend()
     plt.show()
+
+
