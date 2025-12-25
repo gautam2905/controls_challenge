@@ -4,6 +4,8 @@ import pandas as pd
 from pathlib import Path
 from gymnasium import spaces
 from tinyphysics import CONTEXT_LENGTH, TinyPhysicsSimulator, TinyPhysicsModel, CONTROL_START_IDX
+from tqdm import tqdm
+VERBOSE = True
 
 class DummyController:
     def update(self, target_lataccel, current_lataccel, state, future_plan):
@@ -29,8 +31,10 @@ class TinyPhysicsEnv(gym.Env):
         self.sim = TinyPhysicsSimulator(self.tinyphysics_model, data_path=str(files[0]), controller=None, debug=False)
         
         # Process and store all dataframes in memory
-        for f in files:
+        for f in tqdm(files):
             # We use the simulator's internal method to process the raw CSV
+            # if VERBOSE == True:
+            #     print(f"Processing file: {f}")
             processed_df = self.sim.get_data(str(f))
             self.cached_dfs.append(processed_df)
         print(f"Loaded {len(self.cached_dfs)} files.")
@@ -98,7 +102,7 @@ class TinyPhysicsEnv(gym.Env):
 
         lat_err_sq = (target - actual) ** 2
         jerk = ((actual - previous)/ 0.1 ) ** 2
-        reward = - ((lat_err_sq * 50) + jerk)
+        reward = - ((lat_err_sq * 500) + jerk * 0.1)
 
         self.current_step += 1
         self.sim.step_idx = self.current_step
@@ -126,26 +130,26 @@ class TinyPhysicsEnv(gym.Env):
         if future_targets.shape[0] < self.n_lookahead:
             padding = np.zeros(self.n_lookahead - future_targets.shape[0])
             future_targets = np.concatenate([future_targets, padding], axis=0)
-        obs = np.array([self.previous_action, v_ego, a_ego, roll_lataccel, curr_lat, *future_targets], dtype=np.float32)
+        obs = np.array([
+            self.previous_action, 
+            v_ego / 30.0, 
+            a_ego, 
+            roll_lataccel, 
+            curr_lat / 5.0, 
+            *(future_targets / 5.0) 
+            ], dtype=np.float32)
         return obs
 
 
 if __name__ == "__main__":
-    """
-    Deep Reinforcement Learning Controller for TinyPhysics Simulator
-    This controller uses a pre-trained Deep Q-Network (DQN) to compute
-    steering commands based on the vehicle's state and future trajectory.
-    The DQN model is implemented using PyTorch and consists of an
-    actor-critic architecture.
-    """
     from stable_baselines3 import PPO
 
     # Initialize Env
     env = TinyPhysicsEnv(data_dir="./data", model_path="./models/tinyphysics.onnx")
 
     # Initialize PPO
-    model = PPO("MlpPolicy", env, verbose=1, learning_rate=0.0003)
+    model = PPO("MlpPolicy", env, verbose=1, learning_rate=0.0003, device="cpu")
 
     # Train
-    model.learn(total_timesteps=100000)
+    model.learn(total_timesteps=300000)
     model.save("models/ppo_tinyphysics")

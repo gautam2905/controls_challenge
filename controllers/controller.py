@@ -3,8 +3,6 @@ import numpy as np
 from . import BaseController
 
 class Controller(BaseController):
-    # 1. Define a class-level variable to cache the model
-    # This variable is shared by all instances of the class
     _shared_model = None
 
     def __init__(self):
@@ -15,6 +13,7 @@ class Controller(BaseController):
         
         # 3. Assign the shared model to this instance
         self.model = Controller._shared_model
+        self.previous_action = 0.0
         self.n_lookahead = 20 
 
     def update(self, target_lataccel, current_lataccel, state, future_plan):
@@ -31,17 +30,20 @@ class Controller(BaseController):
             padding = [0.0] * (self.n_lookahead - len(future_targets))
             future_targets = list(future_targets) + padding
 
-        # 3. Construct Observation
+        # 3. Construct Observation with NORMALIZATION
         obs = np.array([
-            v_ego, 
-            a_ego, 
-            roll_lataccel, 
-            current_lataccel, 
-            *future_targets
+            self.previous_action,        
+            v_ego / 30.0,                
+            a_ego,                       
+            roll_lataccel,               
+            current_lataccel / 5.0,      
+            *(np.array(future_targets) / 5.0) 
         ], dtype=np.float32)
 
         # 4. Predict Action
-        # deterministic=True avoids noise during evaluation
         action, _states = self.model.predict(obs, deterministic=True)
-
+        
+        # 5. Update Memory & Return
+        self.previous_action = float(np.clip(action[0], -2.0, 2.0))
+        
         return float(action[0])
