@@ -18,25 +18,47 @@ class TinyPhysicsEnv(gym.Env):
         self.context_length = context_length
         self.n_lookahead = 20
         self.tinyphysics_model = TinyPhysicsModel(model_path, debug=False)
+        self.previous_action = 0.0
+
+        # --- OPTIMIZATION START: Pre-load all data ---
+        print("Pre-loading data files...")
+        self.cached_dfs = []
+        files = sorted(list(self.data_dir.glob("*.csv")))
+        
+        # Initialize sim ONCE with the first file to get access to helper methods
+        self.sim = TinyPhysicsSimulator(self.tinyphysics_model, data_path=str(files[0]), controller=None, debug=False)
+        
+        # Process and store all dataframes in memory
+        for f in files:
+            # We use the simulator's internal method to process the raw CSV
+            processed_df = self.sim.get_data(str(f))
+            self.cached_dfs.append(processed_df)
+        print(f"Loaded {len(self.cached_dfs)} files.")
+        # --- OPTIMIZATION END ---
 
         #steer command between -2 to 2
         self.action_space = spaces.Box(low=-2.0, high=2.0, shape=(1,), dtype=np.float32)
-        # Observation space is : [vEgo,aEgo,roll,current Lateral Acceleration, target Lateral Acceleration, ...n_lookahead]  ]
+        # Observation space is : [previous_action, vEgo,aEgo,roll,current Lateral Acceleration, target Lateral Acceleration, ...n_lookahead]  ] 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, 
-            shape=(4 + self.n_lookahead,), 
+            shape=(5 + self.n_lookahead,), 
             dtype=np.float32
         )
 
         self.current_step = 0
-        self.sim = None
 
     def reset(self, options=None, seed=None):
         super().reset(seed=seed)
-
-        random_file = np.random.choice(self.files)
-        self.sim = TinyPhysicsSimulator(self.tinyphysics_model, data_path=str(random_file), controller=None, debug=False)
+        self.previous_action = 0.0
+        # --- FIX 1: FAST DATA SWAP ---
+        # Pick a random dataframe from our cache
+        random_idx = np.random.randint(0, len(self.cached_dfs))
+        self.sim.data = self.cached_dfs[random_idx]
         
+        # Reset the simulator internals (this uses the new self.sim.data we just set)
+        self.sim.reset()
+        # -----------------------------
+
         self.sim.step_idx = CONTEXT_LENGTH
         for i in range(CONTEXT_LENGTH, CONTROL_START_IDX):
             
@@ -47,6 +69,7 @@ class TinyPhysicsEnv(gym.Env):
             # use human steer            
             human_steer = self.sim.data['steer_command'].values[i]
             self.sim.action_history.append(human_steer)
+            self.previous_action = human_steer
             
             # Step the physics engine
             self.sim.sim_step(i)
@@ -64,6 +87,7 @@ class TinyPhysicsEnv(gym.Env):
         self.sim.target_lataccel_history.append(target)
 
         action_value = float(np.clip(action[0], -2.0, 2.0))
+        self.previous_action = action_value
         self.sim.action_history.append(action_value)
 
         self.sim.sim_step(self.current_step)
@@ -99,8 +123,10 @@ class TinyPhysicsEnv(gym.Env):
         
         # Future Targets (Lookahead)
         future_targets = self.sim.data['target_lataccel'].values[idx+1 : idx+1+self.n_lookahead]
-        
-        obs = np.array([v_ego, a_ego, roll_lataccel, curr_lat, *future_targets], dtype=np.float32)
+        if future_targets.shape[0] < self.n_lookahead:
+            padding = np.zeros(self.n_lookahead - future_targets.shape[0])
+            future_targets = np.concatenate([future_targets, padding], axis=0)
+        obs = np.array([self.previous_action, v_ego, a_ego, roll_lataccel, curr_lat, *future_targets], dtype=np.float32)
         return obs
 
 
@@ -121,5 +147,5 @@ if __name__ == "__main__":
     model = PPO("MlpPolicy", env, verbose=1, learning_rate=0.0003)
 
     # Train
-    model.learn(total_timesteps=1000000)
+    model.learn(total_timesteps=100000)
     model.save("models/ppo_tinyphysics")
