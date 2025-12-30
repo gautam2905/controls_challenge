@@ -1,5 +1,6 @@
 import argparse
 import base64
+from time import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -13,7 +14,7 @@ from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 
 from tinyphysics import CONTROL_START_IDX, get_available_controllers, run_rollout
-
+DEBUG = False
 sns.set_theme()
 SAMPLE_ROLLOUTS = 5
 
@@ -93,10 +94,11 @@ def create_report(test, baseline, sample_rollouts, costs, num_segs):
   res.append(f'<img style="max-width:100%" src="data:image/png;base64,{img2base64(fig)}" alt="Plot">')
   res.append("</body></html>")
 
-  with open("report.html", "w", encoding='utf-8') as fob:
+  if not Path("reports").is_dir():
+    Path("reports").mkdir()    
+  with open(f"reports/report_{int(time())}.html", "w", encoding='utf-8') as fob:
     fob.write("\n".join(res))
-    print("Report saved to: './report.html'")
-
+    print(f"Report saved to: './reports/report_{int(time())}.html'")
 
 if __name__ == "__main__":
   available_controllers = get_available_controllers()
@@ -117,8 +119,8 @@ if __name__ == "__main__":
   files = sorted([f for f in data_path.iterdir() if f.suffix == '.csv'])[:args.num_segs]
   print("Running rollouts for visualizations...")
   for d, data_file in enumerate(tqdm(files[:SAMPLE_ROLLOUTS], total=SAMPLE_ROLLOUTS)):
-    test_cost, test_target_lataccel, test_current_lataccel = run_rollout(data_file, args.test_controller, args.model_path, debug=False)
-    baseline_cost, baseline_target_lataccel, baseline_current_lataccel = run_rollout(data_file, args.baseline_controller, args.model_path, debug=False)
+    test_cost, test_target_lataccel, test_current_lataccel = run_rollout(data_file, args.test_controller, args.model_path, debug=DEBUG)
+    baseline_cost, baseline_target_lataccel, baseline_current_lataccel = run_rollout(data_file, args.baseline_controller, args.model_path, debug=DEBUG)
     sample_rollouts.append({
       'seg': data_file.stem,
       'test_controller': args.test_controller,
@@ -133,7 +135,7 @@ if __name__ == "__main__":
 
   for controller_cat, controller_type in [('baseline', args.baseline_controller), ('test', args.test_controller)]:
     print(f"Running batch rollouts => {controller_cat} controller: {controller_type}")
-    rollout_partial = partial(run_rollout, controller_type=controller_type, model_path=args.model_path, debug=False)
+    rollout_partial = partial(run_rollout, controller_type=controller_type, model_path=args.model_path, debug=DEBUG)
     results = process_map(rollout_partial, files[SAMPLE_ROLLOUTS:], max_workers=16, chunksize=10)
     costs += [{'controller': controller_cat, **result[0]} for result in results]
 
