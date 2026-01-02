@@ -11,7 +11,7 @@ class Controller(BaseController):
         # Check if the model is already loaded
         if Controller._shared_model is None:
             # Make sure this path matches your trained residual model
-            Controller._shared_model = PPO.load("models/ppo_pid_1", device='cpu') 
+            Controller._shared_model = PPO.load("models/ppo_pid_updated_new", device='cpu') 
         
         self.model = Controller._shared_model
         
@@ -45,7 +45,7 @@ class Controller(BaseController):
 
         # 3. Construct Observation
         obs = np.array([
-            self.previous_action, 
+            self.previous_action / 2.0, 
             physics_hint * 50,
             v_ego / 30.0,                
             a_ego,                       
@@ -63,7 +63,7 @@ class Controller(BaseController):
 
         # 6. Combine: PID Base + Learned Residual
         # You might need to apply the same scaling to residual as in training if you added any
-        final_steer = pid_steer + float(action_residual[0])
+        final_steer = pid_steer + (float(action_residual[0]) * 0.1)
         
         # Clip and Update Memory
         final_steer = np.clip(final_steer, -2.0, 2.0)

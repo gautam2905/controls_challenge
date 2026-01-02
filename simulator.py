@@ -56,10 +56,8 @@ class TinyPhysicsEnv(gym.Env):
         super().reset(seed=seed)
         self.previous_action = 0.0
         
-        # --- FIX 1: Reset PID Controller ---
         # This clears the integral and previous error for the new episode
         self.pid = PIDController() 
-        # -----------------------------------
 
         # Pick a random dataframe from our cache
         random_idx = np.random.randint(0, len(self.cached_dfs))
@@ -73,21 +71,25 @@ class TinyPhysicsEnv(gym.Env):
             self.sim.state_history.append(state)
             self.sim.target_lataccel_history.append(target)
             
-            # Use human steer during warm-up
+            # We need to simulate what the agent (PID) would have done to update            
+            # 1. Update PID internal state and get its output
+            current_lataccel = self.sim.current_lataccel_history[-1]
+            pid_steer = self.pid.update(target, current_lataccel, state, futureplan)
+            
+            # 2. Update memory: The agent sees what IT outputted, not what the human did.
+            # During inference, the controller remembers its own actions.
+            self.previous_action = pid_steer 
+            
+            # 3. Step Simulator with Human Steer (Ground Truth)
+            # The physics MUST follow the dataset trajectory during warm-up, 
+            # regardless of what the PID wanted to do.
             human_steer = self.sim.data['steer_command'].values[i]
             self.sim.action_history.append(human_steer)
-            self.previous_action = human_steer
-            
-            # IMPORTANT: Feed the warm-up history to PID so it doesn't start cold
-            # We calculate what the PID *would* have done, just to update its internal state (integral/prev_error)
-            current_lataccel = self.sim.current_lataccel_history[-1]
-            _ = self.pid.update(target, current_lataccel, state, futureplan)
             
             self.sim.sim_step(i)
             
         self.current_step = CONTROL_START_IDX
         return self._get_observation(), {}
-
     # def step(self, action):
         
     #     if self.sim is None:
@@ -150,7 +152,7 @@ class TinyPhysicsEnv(gym.Env):
         # Get the Residual (Correction) from PPO
         # You might want to scale this down if you want the agent to only make small tweaks
         # e.g., action_residual = float(action[0]) * 0.1
-        action_residual = float(action[0])
+        action_residual = float(action[0]) * 0.1
         
         # Combine: Base + Residual
         combined_steer = np.clip(pid_steer + action_residual, -2.0, 2.0)
@@ -170,8 +172,10 @@ class TinyPhysicsEnv(gym.Env):
         lat_err_sq = (target - actual) ** 2
         jerk = ((actual - previous)/ 0.1 ) ** 2
         
+        prev_steer = self.sim.action_history[-2]
+        steer_rate = (combined_steer - prev_steer) ** 2
         # Increase Jerk penalty slightly if the agent is too jittery
-        reward = - ((lat_err_sq * 1000) + jerk )
+        reward = - ((lat_err_sq * 5000) + jerk * 500  + steer_rate * 800 )
 
         self.current_step += 1
         self.sim.step_idx = self.current_step
@@ -208,7 +212,7 @@ class TinyPhysicsEnv(gym.Env):
         physics_hint = avg_future_target / (safe_v ** 2)
 
         obs = np.array([
-            self.previous_action,
+            self.previous_action / 2.0,
             physics_hint * 50,
             v_ego / 30.0, 
             a_ego, 
@@ -236,6 +240,6 @@ if __name__ == "__main__":
     )
 
     # You likely need 2M+ steps for this larger network
-    model.load("models/ppo_pid_1")
-    model.learn(total_timesteps=2000000) 
-    model.save("models/ppo_pid_3")
+    model.load("models/ppo_pid_updated_new")
+    model.learn(total_timesteps=4000000) 
+    model.save("models/ppo_pid_updated_new_best")
