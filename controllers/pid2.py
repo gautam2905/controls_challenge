@@ -36,7 +36,7 @@ class Controller(BaseController):
       if len(future_plan.lataccel) >= 5:
         target_lataccel = np.average([target_lataccel] + future_plan.lataccel[0:5], weights = [4, 3, 2, 2, 2, 1]) 
 
-      # normal pid
+      # normal pidA
       error = (target_lataccel - current_lataccel) 
       self.error_integral += error
       error_difference = (error - self.prev_error) 

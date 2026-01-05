@@ -96,9 +96,9 @@ def create_report(test, baseline, sample_rollouts, costs, num_segs):
 
   if not Path("reports").is_dir():
     Path("reports").mkdir()    
-  with open(f"reports/report_{int(time())}.html", "w", encoding='utf-8') as fob:
+  with open(f"reports/report_{args.test_controller}_vs_{args.baseline_controller}.html", "w", encoding='utf-8') as fob:
     fob.write("\n".join(res))
-    print(f"Report saved to: './reports/report_{int(time())}.html'")
+    print(f"Report saved to: './reports/report_{str(args.test_controller)}_vs_{str(args.baseline_controller)}.html'")
 
 if __name__ == "__main__":
   available_controllers = get_available_controllers()
