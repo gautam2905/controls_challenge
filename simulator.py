@@ -128,7 +128,7 @@ class TinyPhysicsEnv(gym.Env):
         steer_rate = (combined_steer - prev_steer) ** 2
         # Increase Jerk penalty slightly if the agent is too jittery
         # reward = - ((lat_err_sq * 5000) + steer_rate * 1000 + residual_cost )
-        reward = - ((lat_err_sq * 5000) + jerk * 100 + steer_rate * 100 + residual_cost )
+        reward = - ((lat_err_sq * 5000) + jerk * 3000 )
 
         self.current_step += 1
         self.sim.step_idx = self.current_step
@@ -138,7 +138,6 @@ class TinyPhysicsEnv(gym.Env):
         truncated = False
 
         return obs, reward, terminated, truncated, {}
-        
         
     def _get_observation(self):
         
@@ -163,11 +162,23 @@ class TinyPhysicsEnv(gym.Env):
         # We clip v_ego to avoid division by zero
         safe_v = max(v_ego, 1.0)
         physics_hint = avg_future_target / (safe_v ** 2)
+   
+        # obs = np.array([
+        #     self.previous_action / 2.0,
+        #     physics_hint * 50,
+        #     v_ego / 30.0, 
+        #     a_ego, 
+        #     roll_lataccel, 
+        #     curr_lat / 5.0, 
+        #     pid_integral / 10.0,
+        #     pid_out / 2.0,
+        #     *(future_targets / 5.0) 
+        #     ], dtype=np.float32)
+        # return obs
 
         pid_integral = self.pid.error_integral
         pid_out = self.pid.prev_action
 
-    
         obs = np.array([
             self.previous_action / 2.0,
             physics_hint * 50,
@@ -175,8 +186,8 @@ class TinyPhysicsEnv(gym.Env):
             a_ego, 
             roll_lataccel, 
             curr_lat / 5.0, 
-            pid_integral / 10.0,
-            pid_out / 2.0,
+            pid_integral / 10.0,  # Context: Is PID wound up?
+            pid_out / 2.0,        # Context: What did PID just do?
             *(future_targets / 5.0) 
             ], dtype=np.float32)
         return obs
@@ -200,5 +211,5 @@ if __name__ == "__main__":
 
     # You likely need 2M+ steps for this larger network
     # model.load("models/ppo_pid_updated_new")
-    model.learn(total_timesteps=1000000) 
-    model.save("models/new_ppo")
+    model.learn(total_timesteps=2000000) 
+    model.save("models/ppo_5.1")
