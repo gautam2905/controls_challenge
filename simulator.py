@@ -104,7 +104,7 @@ class TinyPhysicsEnv(gym.Env):
         # Get the Residual (Correction) from PPO
         # You might want to scale this down if you want the agent to only make small tweaks
         # e.g., action_residual = float(action[0]) * 0.1
-        action_residual = float(action[0]) * 0.1
+        action_residual = float(action[0]) * 0.5
         
         # Combine: Base + Residual
         combined_steer = np.clip(pid_steer + action_residual, -2.0, 2.0)
@@ -128,7 +128,7 @@ class TinyPhysicsEnv(gym.Env):
         steer_rate = (combined_steer - prev_steer) ** 2
         # Increase Jerk penalty slightly if the agent is too jittery
         # reward = - ((lat_err_sq * 5000) + steer_rate * 1000 + residual_cost )
-        reward = - ((lat_err_sq * 5000) + jerk * 3000 )
+        reward = - ((lat_err_sq * 5000) + jerk * 100 + residual_cost )
 
         self.current_step += 1
         self.sim.step_idx = self.current_step
@@ -205,11 +205,11 @@ if __name__ == "__main__":
         "MlpPolicy", 
         env, 
         verbose=1, 
-        learning_rate=0.00001,
+        learning_rate=0.0001,
         ent_coef=0.02                 
     )
 
     # You likely need 2M+ steps for this larger network
     # model.load("models/ppo_pid_updated_new")
-    model.learn(total_timesteps=2000000) 
-    model.save("models/ppo_5.1")
+    model.learn(total_timesteps=1000000) 
+    model.save("models/ppo_boosted")

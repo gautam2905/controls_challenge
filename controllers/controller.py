@@ -51,7 +51,7 @@ class Controller(BaseController):
 
         action_residual, _states = self.model.predict(obs, deterministic=True)
         
-        final_steer = pid_steer + (float(action_residual[0]) * 0.1)
+        final_steer = pid_steer + (float(action_residual[0]) * 0.5)
         
         final_steer = np.clip(final_steer, -2.0, 2.0)
         self.previous_action = final_steer
